@@ -1,0 +1,78 @@
+{
+  "topics": {
+    "package": {
+      "summary": "执行当前目标的原生 IPMI 命令，支持二进制响应输出。",
+      "usage": [
+        "bmc use <IPv4>",
+        "bmc tool ipmitool"
+      ],
+      "examples": [
+        {
+          "command": "bmc tool ipmitool",
+          "description": "查看详细说明和示例。"
+        }
+      ],
+      "notes": [
+        "使用 bmc_v2_auth 为当前目标交互配置会话凭据。",
+        "本工具遵循 BMCShell 的 SOCKS5 代理设置。"
+      ]
+    },
+    "tool.ipmitool": {
+      "summary": "在当前 BMC 上运行 IPMI 命令。",
+      "usage": [
+        "ipmitool <原生命令及参数> [--bin]"
+      ],
+      "options": [
+        {
+          "name": "--bin",
+          "description": "将空白分隔的两位十六进制响应转换为原始字节。",
+          "default": "原生文本输出"
+        },
+        {
+          "name": "-b",
+          "description": "保留原生 ipmitool 的目标通道参数。"
+        }
+      ],
+      "examples": [
+        {
+          "command": "ipmitool chassis status",
+          "description": "读取机箱状态。"
+        },
+        {
+          "command": "ipmitool raw 0x06 0x01 --bin | hexdump -C",
+          "description": "将 raw 的十六进制响应转为原始字节再显示。"
+        }
+      ],
+      "notes": [
+        "由会话提供目标、用户名和密码，密码通过单次子进程的 IPMI_PASSWORD 传递。",
+        "二进制模式先校验完整响应。支持 00 字节，保留原始字节数，原生命令失败时返回其退出码。",
+        "同名原生命令可使用 command ipmitool 显式调用。"
+      ]
+    },
+    "tool.bmc_v2_auth": {
+      "summary": "为当前目标手动设置用户名和密码。",
+      "usage": [
+        "bmc_v2_auth [--tls-insecure]",
+        "bmc_v2_auth [--tls-insecure|--clear]"
+      ],
+      "options": [
+        {
+          "name": "--tls-insecure",
+          "description": "允许当前目标的 Redfish 请求跳过 HTTPS 证书校验。",
+          "default": "校验证书"
+        }
+      ],
+      "examples": [
+        {
+          "command": "bmc_v2_auth",
+          "description": "从终端输入用户名和密码。"
+        }
+      ],
+      "notes": [
+        "凭据保存在当前 Bash 会话内存，由工具发起请求时使用。配置动作本身不进行设备认证。",
+        "退出、成功切换目标会清除当前凭据。",
+        "认证配置保存在当前会话内存。--clear 清除已配置凭据。"
+      ]
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "c7998528-c9db-4b22-8c8f-a16e0affd94d",
+  "type": "toolplugin",
+  "name": "BMCShell IPMI",
+  "summary": "执行当前目标的原生 IPMI 命令，支持二进制响应输出。",
+  "version": "1.0.0",
+  "coreApi": 1,
+  "platforms": [
+    "windows-amd64"
+  ],
+  "help": "help.json",
+  "changelog": "changelog.json",
+  "assets": [
+    "tool/compat/common.sh",
+    "tool/compat/ipmi.sh",
+    "tool/compat/input.sh",
+    "tool/compat/auth.sh"
+  ],
+  "provides": {
+    "tools": {
+      "ipmitool": {
+        "scope": "session",
+        "runtime": "bash",
+        "entry": "tool/entry.sh",
+        "requires": [
+          "target.ip"
+        ]
+      },
+      "bmc_v2_auth": {
+        "scope": "session",
+        "runtime": "bash",
+        "entry": "tool/entry.sh",
+        "requires": [
+          "target.ip"
+        ]
+      }
+    }
+  },
+  "systemDependencies": [
+    {
+      "id": "ipmitool"
+    }
+  ]
+}
