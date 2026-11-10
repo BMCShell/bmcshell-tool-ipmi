@@ -2,9 +2,14 @@
   "schema": 1,
   "id": "c7998528-c9db-4b22-8c8f-a16e0affd94d",
   "type": "toolplugin",
-  "name": "BMCShell IPMI",
+  "publisher": "bmcshell",
+  "shortName": "ipmi",
+  "name": "bmcshell-tool-ipmi",
+  "displayName": "BMCShell IPMI",
+  "description": "执行当前目标的原生 IPMI 命令，支持二进制响应输出。",
   "summary": "执行当前目标的原生 IPMI 命令，支持二进制响应输出。",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "repository": "https://github.com/BMCShell/bmcshell-tool-ipmi",
   "coreApi": 1,
   "platforms": [
     "windows-amd64"

@@ -1,6 +1,13 @@
 {
   "releases": [
     {
+      "version": "1.0.1",
+      "date": "2026-11-10",
+      "changes": [
+        "按扩展命名规范使用 bmcshell-tool-ipmi，发布包采用 name@version 命名。"
+      ]
+    },
+    {
       "version": "1.0.0",
       "date": "2026-11-09",
       "changes": [

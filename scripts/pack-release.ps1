@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'check-identity.ps1')
 $files = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
 
 function Add-ReleaseFile([string] $Entry, [string] $Extension = '') {
@@ -61,11 +62,11 @@ function Assert-WindowsX64([string] $Path) {
     }
 }
 
-function Assert-SqliteBook([string] $Path) {
+function Assert-SqliteDatabase([string] $Path) {
     $reader = [IO.BinaryReader]::new([IO.File]::OpenRead($Path))
     try {
         if ([Text.Encoding]::ASCII.GetString($reader.ReadBytes(16)) -cne "SQLite format 3`0") {
-            throw "Expected a SQLite book: $Path"
+            throw "Expected a SQLite database: $Path"
         }
     } finally {
         $reader.Dispose()
@@ -80,9 +81,13 @@ if ($package -isnot [System.Collections.IDictionary] -or $package.schema -ne 1 -
     $package.type -cnotin 'toolplugin', 'book', 'library', 'theme', 'bundle') {
     throw 'Invalid package ID, version, type, schema, or core API.'
 }
+Assert-PackageIdentity $package $repo
 $null = Add-ReleaseFile 'README.md'
 $null = Add-ReleaseFile $package.help '.json'
 $null = Add-ReleaseFile $package.changelog '.json'
+if ($package.envRegistry) {
+    $null = Add-ReleaseFile $package.envRegistry '.csv'
+}
 if (Test-Path -LiteralPath (Join-Path $repo 'LICENSE')) {
     $null = Add-ReleaseFile 'LICENSE'
 }
@@ -92,10 +97,20 @@ if (Test-Path -LiteralPath (Join-Path $repo 'THIRD_PARTY_NOTICES.txt')) {
 foreach ($asset in $package.assets) {
     $null = Add-ReleaseFile $asset
 }
+foreach ($migration in $package.libraryMigrations.Values) {
+    $null = Add-ReleaseFile $migration '.sql'
+}
 
 switch ($package.type) {
-    'book' { Assert-SqliteBook (Add-ReleaseFile $package.data '.book.db') }
-    { $_ -in 'library', 'theme' } { $null = Add-ReleaseFile $package.data '.json' }
+    'book' { Assert-SqliteDatabase (Add-ReleaseFile $package.data '.book.db') }
+    'library' {
+        if ($package.library) {
+            Assert-SqliteDatabase (Add-ReleaseFile $package.data '.library.db')
+        } else {
+            $null = Add-ReleaseFile $package.data '.json'
+        }
+    }
+    'theme' { $null = Add-ReleaseFile $package.data '.json' }
     'toolplugin' {
         foreach ($entry in $package.provides.tools.Values) {
             switch -CaseSensitive ($entry.runtime ?? '') {
@@ -112,7 +127,11 @@ switch ($package.type) {
 
 $output = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
 $null = [IO.Directory]::CreateDirectory($output)
-$baseName = "BMCShell-$($package.type)-$($package.id)-$($package.version)"
+$baseName = if ($package.Contains('shortName')) {
+    "$($package.name)@$($package.version)"
+} else {
+    "BMCShell-$($package.type)-$($package.id)-$($package.version)"
+}
 $archivePath = Join-Path $output "$baseName.zip"
 $manifestPath = Join-Path $output "$baseName.manifest.json"
 if ((Test-Path -LiteralPath $archivePath) -or (Test-Path -LiteralPath $manifestPath)) {
