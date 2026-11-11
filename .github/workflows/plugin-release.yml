@@ -1,0 +1,72 @@
+name: Build plugin release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: plugin-release-${{ github.ref }}
+
+jobs:
+  release:
+    if: ${{ !github.event.deleted }}
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Pack and verify ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Get-Content -Raw ./bmc-package.json | ConvertFrom-Json
+          if ($env:GITHUB_EVENT_NAME -eq 'push' -and $env:GITHUB_REF_NAME -cne "v$($package.version)") {
+            throw "Tag must match bmc-package.json version $($package.version)."
+          }
+
+          $output = Join-Path $env:RUNNER_TEMP 'bmcshell-plugin-release'
+          ./scripts/pack-release.ps1 -OutputDirectory $output
+          $base = "$($package.name)@$($package.version)"
+          $zip = Get-Item -LiteralPath (Join-Path $output "$base.zip")
+          $manifest = Get-Content -Raw -LiteralPath (Join-Path $output "$base.manifest.json") | ConvertFrom-Json
+          $hash = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash
+          if ($manifest.id -cne $package.id -or $manifest.name -cne $package.name -or
+              $manifest.version -cne $package.version -or $manifest.artifact -cne $zip.Name -or
+              $manifest.sha256 -ine $hash) {
+            throw 'Release manifest does not match the package ZIP.'
+          }
+
+      - name: Publish GitHub Release
+        if: ${{ github.event_name == 'push' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = $env:GITHUB_REF_NAME
+          $package = Get-Content -Raw ./bmc-package.json | ConvertFrom-Json
+          $output = Join-Path $env:RUNNER_TEMP 'bmcshell-plugin-release'
+          $base = "$($package.name)@$($package.version)"
+          $zip = Join-Path $output "$base.zip"
+          $manifest = Join-Path $output "$base.manifest.json"
+
+          $existing = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft,assets 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $release = $existing | ConvertFrom-Json
+            $uploaded = @($release.assets | Where-Object { $_.size -gt 0 } | Select-Object -ExpandProperty name)
+            if ($release.isDraft -or "$base.zip" -cnotin $uploaded -or "$base.manifest.json" -cnotin $uploaded) {
+              throw 'Inspect the existing draft or incomplete release before retrying.'
+            }
+            Write-Output "Release $tag already contains the package and manifest."
+            return
+          }
+
+          $flags = @()
+          if (($package.version -split '\+', 2)[0].Contains('-')) { $flags += '--prerelease' }
+          gh release create $tag $zip $manifest --repo $env:GITHUB_REPOSITORY --verify-tag --notes-from-tag @flags
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release creation failed.' }
