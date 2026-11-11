@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "suggestions": [
+    {
+      "dependency": "ipmitool",
+      "suggestion": "安装适用于当前 Windows 终端的 ipmitool 及其配套运行库，将可执行文件所在目录加入 PATH。在同一终端运行 command ipmitool -V 确认可执行，再运行 bmc doctor -d 复查。",
+      "platform": "windows-amd64"
+    }
+  ]
+}

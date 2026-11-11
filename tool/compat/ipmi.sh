@@ -1,50 +1,137 @@
 # BMC Shell 2.0 - plugins/ipmi.sh
 
-_bmc_ipmi_run() {
-    local ip=$1 user=$2 executable proxy_address
-    local +x password=$3
-    shift 3
-    executable=$(type -P ipmitool) || { _bmc_error 'ipmitool executable is not installed.'; return 69; }
-    proxy_address=$(_bmcshell_bridge proxy-address ipmi) || return
-    if [[ -n $proxy_address ]]; then
-        executable=$(_bmc_winpath "$executable") || return
-        IPMI_PASSWORD="$password" _bmcshell_bridge proxy-run ipmi "$ip" "$executable" "$user" "$@"
-        return
-    fi
-    IPMI_PASSWORD="$password" command ipmitool -I lanplus -H "$ip" -U "$user" -E "$@"
-}
-
 _bmc_ipmi_wrapper() {
     _bmc_secret_guard && _bmc_require_active || return
-    local arg binary=0 output rc token octal escaped=''
-    local -a args=() bytes=()
+    local executable proxy_address arg flag index route_option name
+    local host=$_BMC_IP interface=lanplus user='' port=623 family='' auth_type=''
+    local explicit_host=0 explicit_interface=0 explicit_user=0 explicit_password=0
+    local local_device=0 offline=0 command_seen=0 environment_password=0
+    local binary=0 output rc token octal escaped=''
+    local +x value
+    local -a options=() relay_options=() command_args=() operand=() defaults=() invoke=() display_args=() bytes=()
+    executable=$(builtin type -P ipmitool) || {
+        _bmc_error '找不到 ipmitool。安装适合当前终端的版本并加入 PATH，再运行 command ipmitool -V 和 bmc doctor -d。'
+        return 69
+    }
     while (( $# )); do
-        case $1 in
-            --bin) binary=1; shift ;;
-            *) args+=("$1"); shift ;;
+        arg=$1
+        shift
+        case $arg in
+            --bin) binary=1; continue ;;
+            --)
+                if (( ! command_seen )) && [[ ${1-} == help ]]; then offline=1; fi
+                command_args+=("$arg" "$@")
+                break ;;
         esac
-    done
-    # Native getopt also accepts clusters such as -vH, so allow only known safe flags.
-    for arg in "${args[@]}"; do
-        if [[ $arg == -* && ! $arg =~ ^-[46hVvcgsKYZ]+$ &&
-              ! $arg =~ ^-[46hVvcgsKYZ]*[odCLAtTmzSlbBekyORND].*$ ]]; then
-            _bmc_error 'Unsupported IPMI option. Use command ipmitool for an independent connection.'
-            return 2
+        if (( command_seen )) || [[ $arg != -?* ]]; then
+            if (( ! command_seen )) && [[ $arg == help ]]; then offline=1; fi
+            command_seen=1
+            command_args+=("$arg")
+            continue
+        fi
+        operand=()
+        route_option=0
+        if [[ $arg != --* ]]; then
+            # Match upstream ipmitool's short options that consume an operand.
+            for (( index = 1; index < ${#arg}; index++ )); do
+                flag=${arg:index:1}
+                case $flag in
+                    h|V) offline=1 ;;
+                    a) explicit_password=1 ;;
+                    E) explicit_password=1; environment_password=1 ;;
+                    4|6) family=$flag ;;
+                    [IodHPfUpCLAtTmzSlbBekyORND])
+                        value=${arg:index+1}
+                        if [[ -z $value ]]; then
+                            if (( $# == 0 )); then offline=1; break; fi
+                            value=$1
+                            operand=("$1")
+                            shift
+                        fi
+                        case $flag in
+                            I) interface=$value; explicit_interface=1 ;;
+                            H) host=$value; explicit_host=1; route_option=1 ;;
+                            p) port=$value; route_option=1 ;;
+                            U) user=$value; explicit_user=1 ;;
+                            P|f) explicit_password=1 ;;
+                            A) auth_type=$value ;;
+                            d|D) local_device=1 ;;
+                            o) if [[ $value == list || $value == help ]]; then offline=1; fi ;;
+                        esac
+                        break ;;
+                esac
+            done
+        fi
+        options+=("$arg" "${operand[@]}")
+        if (( route_option )); then
+            # Keep any flags that shared a token with -H or -p.
+            if (( index > 1 )); then relay_options+=("${arg:0:index}"); fi
+        else
+            relay_options+=("$arg" "${operand[@]}")
         fi
     done
-    _bmc_show_command --env IPMI_PASSWORD "$_BMC_PASSWORD" command ipmitool -I lanplus -H "$_BMC_IP" -U "$_BMC_USER" -E "${args[@]}"
+
+    if (( local_device && ! explicit_interface && ! explicit_host )); then interface=''; fi
+    display_args=("${options[@]}" "${command_args[@]}")
+    invoke=("$executable" "${display_args[@]}")
+    if (( ! offline )) && [[ $interface == lan || $interface == lanplus ]]; then
+        if (( ! explicit_interface )); then defaults+=(-I "$interface"); fi
+        if [[ $host == "$_BMC_IP" ]] && _bmc_credentials_valid "$_BMC_USER" "$_BMC_PASSWORD"; then
+            if (( ! explicit_user )); then
+                user=$_BMC_USER
+                defaults+=(-U "$user")
+            fi
+            if (( ! explicit_password )) && [[ $user == "$_BMC_USER" && ${auth_type,,} != none ]]; then
+                defaults+=(-P "$_BMC_PASSWORD")
+            fi
+        fi
+        display_args=("${defaults[@]}")
+        if (( ! explicit_host )); then display_args+=(-H "$host"); fi
+        display_args+=("${options[@]}" "${command_args[@]}")
+        # Keep command operands from overriding managed connection options on
+        # ipmitool builds that scan past the first positional argument.
+        if (( command_seen )); then command_args=(-- "${command_args[@]}"); fi
+        proxy_address=$(_bmcshell_bridge proxy-address ipmi) || return
+        if [[ -n $proxy_address ]]; then
+            executable=$(_bmc_winpath "$executable") || return
+            invoke=(_bmcshell_bridge proxy-run ipmi-native "$host" "$port" "$family" "$executable"
+                "${defaults[@]}" "${relay_options[@]}" "${command_args[@]}")
+        else
+            invoke=("$executable" "${defaults[@]}")
+            if (( ! explicit_host )); then invoke+=(-H "$host"); fi
+            invoke+=("${options[@]}" "${command_args[@]}")
+        fi
+    fi
     if (( binary == 0 )); then
-        _bmc_ipmi_run "$_BMC_IP" "$_BMC_USER" "$_BMC_PASSWORD" "${args[@]}"
+        # Show the resolved remote command, including plaintext credentials.
+        {
+            builtin printf '==> '
+            if (( environment_password )); then
+                for name in IPMITOOL_PASSWORD IPMI_PASSWORD; do
+                    if [[ $(builtin declare -p "$name" 2>/dev/null) =~ ^declare\ -[a-zA-Z]*x ]]; then
+                        builtin printf '%s=%q ' "$name" "${!name}"
+                        break
+                    fi
+                done
+            fi
+            builtin printf 'ipmitool'
+            if (( ${#display_args[@]} )); then builtin printf ' %q' "${display_args[@]}"; fi
+            builtin printf '\n'
+        } >&2
+        "${invoke[@]}"
         return
     fi
-    if output=$(_bmc_ipmi_run "$_BMC_IP" "$_BMC_USER" "$_BMC_PASSWORD" "${args[@]}"); then :
+    if output=$("${invoke[@]}"); then :
     else rc=$?; return "$rc"; fi
     # Validate the entire response before emitting bytes. Never store binary
     # output in Bash variables (NUL bytes would be lost).
     output=${output//$'\r'/ }; output=${output//$'\n'/ }
     IFS=$' \t\n' read -r -a bytes <<< "$output"
     for token in "${bytes[@]}"; do
-        [[ $token =~ ^[0-9a-fA-F]{2}$ ]] || { _bmc_error '二进制转换失败：输出必须是空白分隔的两位十六进制字节。'; return 65; }
+        [[ $token =~ ^[0-9a-fA-F]{2}$ ]] || {
+            _bmc_error '二进制转换需要空白分隔的两位十六进制字节。请使用 raw，若已启用 -v 可去掉后重试。'
+            return 65
+        }
         # Fixed-width octal avoids hexadecimal escape handling differences in
         # MobaXterm runtimes. Force Bash builtin, bypass printf wrappers.
         builtin printf -v octal '\\%03o' "$((16#$token))"
@@ -55,9 +142,9 @@ _bmc_ipmi_wrapper() {
 
 
 _bmc_verify_ipmi() {
-    local ip=$1 user=$4
-    local +x password=$5
-    if _bmc_ipmi_run "$ip" "$user" "$password" mc info >/dev/null; then return 0; fi
+    local _BMC_IP=$1 _BMC_USER=$4 _BMC_ACTIVE=1
+    local +x _BMC_PASSWORD=$5
+    if _bmc_ipmi_wrapper mc info >/dev/null; then return 0; fi
     _bmc_error 'IPMI 验证失败；不能仅凭此判断密码错误。'; return 3
 }
 # All registered public tool names are checked centrally before activation.

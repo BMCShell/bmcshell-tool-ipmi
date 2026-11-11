@@ -3,12 +3,12 @@
     "package": {
       "summary": "执行当前目标的原生 IPMI 命令，支持二进制响应输出。",
       "usage": [
-        "bmc use <IPv4>",
-        "bmc tool ipmitool"
+        "bmc use <IP>",
+        "bmc tool ipmitool --help"
       ],
       "examples": [
         {
-          "command": "bmc tool ipmitool",
+          "command": "bmc tool ipmitool --help",
           "description": "查看详细说明和示例。"
         }
       ],
@@ -18,25 +18,29 @@
       ]
     },
     "tool.ipmitool": {
-      "summary": "在当前 BMC 上运行 IPMI 命令。",
+      "summary": "运行原生 ipmitool，可使用当前 BMC 会话作为带外连接默认值。",
       "usage": [
-        "ipmitool <原生命令及参数> [--bin]"
+        "ipmitool [--bin] [-I <接口>] [-H <主机>] [-U <用户>] [-P <密码>] [原生选项] <命令> [命令参数]"
       ],
       "options": [
         {
           "name": "--bin",
-          "description": "将空白分隔的两位十六进制响应转换为原始字节。",
+          "description": "将标准输出中空白分隔的两位十六进制响应转换为原始字节，可用于 raw。可放在命令前或命令参数末尾。",
           "default": "原生文本输出"
         },
         {
-          "name": "-b",
-          "description": "保留原生 ipmitool 的目标通道参数。"
+          "name": "-h",
+          "description": "显示原生 ipmitool 的选项帮助，包括 -b 桥接通道和 -p UDP 端口。"
         }
       ],
       "examples": [
         {
           "command": "ipmitool chassis status",
-          "description": "读取机箱状态。"
+          "description": "使用当前会话读取机箱状态。"
+        },
+        {
+          "command": "ipmitool -I lanplus -U operator -P '示例密码' -H 192.0.2.20 chassis status",
+          "description": "显式指定带外连接的目标和用户名、密码。"
         },
         {
           "command": "ipmitool raw 0x06 0x01 --bin | hexdump -C",
@@ -44,9 +48,12 @@
         }
       ],
       "notes": [
-        "由会话提供目标、用户名和密码，密码通过单次子进程的 IPMI_PASSWORD 传递。",
+        "带外连接默认使用 lanplus 和当前会话的目标。当前目标可通过 bmc_v2_auth 设置缺省用户名和密码。显式指定的其他目标或用户名使用调用者提供的认证选项或 ipmitool 的原生认证流程。",
+        "-P、-E、-f 和 -a 均按原生方式取密码。使用 -I open 等本地接口时，由 ipmitool 处理连接。",
+        "会话默认凭据通过 -U 和 -P 传递。普通调用在执行前向标准错误回显以 ==> ipmitool 开头的完整命令，密码明文显示。参数按 Bash 语法转义，代理模式显示远端目标，--bin 模式关闭命令回显。",
+        "-f 和 -a 按原生命令回显密码文件路径或交互参数。",
         "二进制模式先校验完整响应。支持 00 字节，保留原始字节数，原生命令失败时返回其退出码。",
-        "同名原生命令可使用 command ipmitool 显式调用。"
+        "可用 command ipmitool -V 检查系统程序，用 bmc doctor -d 查看缺失依赖的修复建议。"
       ]
     },
     "tool.bmc_v2_auth": {

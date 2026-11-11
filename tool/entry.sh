@@ -84,9 +84,9 @@ _bmcshell_v2tools_run() (
     builtin source "$_BMC_INSTALL_DIR/compat/common.sh" || return
     _bmcshell_v2tools_register_shims
     case $tool in
-        ipmitool|getcid|setcid|smash|redfish)
+        getcid|setcid|smash|redfish)
             if ! _bmc_credentials_valid "$_BMC_USER" "$_BMC_PASSWORD"; then
-                case $tool in ipmitool) implementation=bmc_v2_auth;; *) implementation="$tool --auth";; esac
+                implementation="$tool --auth"
                 _bmc_error "请先执行 $implementation 为当前会话输入登录凭据。"
                 return 2
             fi
@@ -142,11 +142,12 @@ _bmcshell_v2tools_entry() {
     fi
     if (( $# == 1 )) && [[ $1 == -h || $1 == --help ]]; then
         case $tool in
-            bmc_v2_auth|ipmitool|redfish|bssh|getcid|setcid|smash|snmp) bmc tool "$tool"; return ;;
+            ipmitool) if [[ $1 == --help ]]; then bmc tool "$tool" --help; return; fi ;;
+            bmc_v2_auth|redfish|bssh|getcid|setcid|smash|snmp) bmc tool "$tool"; return ;;
         esac
     fi
     ip=$(bmc bridge field target.ip) || return
-    if [[ ! $ip =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then
+    if [[ -z $ip || ( $tool != ipmitool && $tool != bmc_v2_auth && ! $ip =~ ^[0-9]+(\.[0-9]+){3}$ ) ]]; then
         builtin printf 'V2 工具需要当前会话中的 IPv4 目标。\n' >&2
         return 2
     fi

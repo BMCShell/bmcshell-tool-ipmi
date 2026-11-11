@@ -16,7 +16,9 @@
   ],
   "help": "help.json",
   "changelog": "changelog.json",
+  "repairSuggestions": "repair.json",
   "assets": [
+    "repair.json",
     "tool/compat/common.sh",
     "tool/compat/ipmi.sh",
     "tool/compat/input.sh",
@@ -44,7 +46,8 @@
   },
   "systemDependencies": [
     {
-      "id": "ipmitool"
+      "id": "ipmitool",
+      "requiredBy": ["ipmitool"]
     }
   ]
 }
