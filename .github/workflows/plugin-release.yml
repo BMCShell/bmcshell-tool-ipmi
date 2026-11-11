@@ -68,5 +68,5 @@ jobs:
 
           $flags = @()
           if (($package.version -split '\+', 2)[0].Contains('-')) { $flags += '--prerelease' }
-          gh release create $tag $zip $manifest --repo $env:GITHUB_REPOSITORY --verify-tag --notes-from-tag @flags
+          gh release create $tag $zip $manifest --verify-tag --notes-from-tag @flags
           if ($LASTEXITCODE -ne 0) { throw 'GitHub Release creation failed.' }
