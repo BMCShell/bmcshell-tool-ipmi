@@ -19,6 +19,8 @@ ipmitool raw 0x06 0x01 --bin > response.bin
 
 会话默认凭据通过 `-U` 和 `-P` 传递。普通调用在执行前向标准错误回显完整命令，例如 `==> ipmitool -I lanplus -U admin -P admin -H 192.0.2.10 chassis status`。参数使用 Bash 转义，密码明文显示。代理模式显示远端目标，`--bin` 模式关闭命令回显。显式传入的原生认证选项继续按原生方式处理。
 
+终端中以浅灰色显示命令回显，并以青色突出 `lan print`、`mc info` 等报告的字段名。管道和重定向使用纯文本，设置 `NO_COLOR=1` 可关闭终端配色。
+
 系统依赖为 `ipmitool`。若缺失，安装当前终端可运行的 Windows 版及其配套运行库，将可执行文件所在目录加入 PATH，然后在同一终端运行 `command ipmitool -V` 和 `bmc doctor -d`。
 
 发布时在本仓运行 `pwsh -File ./scripts/pack-release.ps1`，输出 `bmcshell-tool-ipmi@<version>.zip` 和 SHA256 清单。

@@ -12,24 +12,24 @@ _bmcshell_v2tools_read_auth() (
 )
 
 _bmcshell_v2tools_auth() {
-    local root=$1 tls=verify
+    local root=$1 tool=$2 tls=verify
     local +x payload
-    shift
+    shift 2
     case $#:${1-} in
         0:) ;;
         1:--tls-insecure) tls=insecure ;;
         1:--clear)
             builtin unset '_BMCSHELL_SESSION_STATE[v2.user]' '_BMCSHELL_SESSION_STATE[v2.password]' '_BMCSHELL_SESSION_STATE[v2.tls]'
-            builtin printf '已清除当前会话的 V2 登录凭据。\n'
+            builtin printf '已清除当前会话手动设置的登录凭据。\n'
             return 0
             ;;
-        *) builtin printf '用法：bmc_v2_auth [--tls-insecure|--clear]\n' >&2; return 2 ;;
+        *) builtin printf '登录凭据选项无效。请运行 bmc tool %s --help 查看用法。\n' "$tool" >&2; return 2 ;;
     esac
     payload=$(_bmcshell_v2tools_read_auth "$root") || return
     _BMCSHELL_SESSION_STATE[v2.user]=${payload%%$'\n'*}
     _BMCSHELL_SESSION_STATE[v2.password]=${payload#*$'\n'}
     _BMCSHELL_SESSION_STATE[v2.tls]=$tls
-    builtin printf 'V2 登录凭据已载入当前会话，等待工具实际验证。\n'
+    builtin printf '登录凭据已保存到当前会话，将在工具请求时使用。\n'
 }
 
 _bmcshell_v2tools_register_shims() {
@@ -40,7 +40,7 @@ _bmcshell_v2tools_register_shims() {
     _bmc_require_active() { [[ $_BMC_ACTIVE == 1 ]]; }
     _bmc_preview_enabled() { return 1; }
     _bmc_show_command() { :; }
-    _bmc_tool() { bmc tool "$1"; }
+    _bmc_tool() { bmc tool "$1" --help; }
     _bmc_exit() { :; } # The caller exits the parent shell session after a successful reset.
     _bmc_winpath() { command cygpath -aw -- "$1"; }
     _bmc_config_dir() {
@@ -56,7 +56,7 @@ _bmcshell_v2tools_snmp_setup() {
     if [[ $action == -r || $action == --clear ]]; then
         (( $# == 3 )) || { builtin printf '用法：snmp -r\n' >&2; return 2; }
         builtin unset '_BMCSHELL_SESSION_STATE[v2.snmp_version]' '_BMCSHELL_SESSION_STATE[v2.snmp_community]'
-        builtin printf 'Current SNMP community cleared.\n'
+        builtin printf '已清除当前会话的 SNMP 团体名，默认版本恢复为 2c。\n'
         return 0
     fi
     if (( $# > 4 )) || [[ $version != 1 && $version != 2c ]]; then
@@ -72,7 +72,7 @@ _bmcshell_v2tools_snmp_setup() {
     ) || return
     _BMCSHELL_SESSION_STATE[v2.snmp_version]=$version
     _BMCSHELL_SESSION_STATE[v2.snmp_community]=$community
-    builtin printf 'SNMPv%s community configured for %s (current BMC session only).\n' "$version" "$ip"
+    builtin printf '已配置 SNMPv%s 团体名，目标为 %s，仅在当前 BMC 会话中生效。\n' "$version" "$ip"
 }
 
 _bmcshell_v2tools_run() (
@@ -87,6 +87,7 @@ _bmcshell_v2tools_run() (
         getcid|setcid|smash|redfish)
             if ! _bmc_credentials_valid "$_BMC_USER" "$_BMC_PASSWORD"; then
                 implementation="$tool --auth"
+                [[ $tool != setcid ]] || implementation='getcid --auth'
                 _bmc_error "请先执行 $implementation 为当前会话输入登录凭据。"
                 return 2
             fi
@@ -129,7 +130,7 @@ _bmcshell_v2tools_run() (
             local +x _BMC_SNMP_COMMUNITY=${_BMCSHELL_SESSION_STATE[v2.snmp_community]-}
             if [[ $tool == snmp ]]; then _bmc_snmp_command "$@"
             else "_bmc_tool_$tool" "$@"; fi ;;
-        *) _bmc_error "未知 V2 工具：$tool"; return 2 ;;
+        *) _bmc_error "无法识别工具 $tool。"; return 2 ;;
     esac
 )
 
@@ -137,24 +138,24 @@ _bmcshell_v2tools_entry() {
     local root=${BASH_SOURCE[0]%/*} tool=$1 ip
     shift
     if [[ $- == *x* || $- == *a* || -o functrace || -n $(builtin trap -p DEBUG) ]]; then
-        builtin printf 'V2 工具需要关闭命令跟踪和自动导出后才能读取会话凭据。\n' >&2
+        builtin printf '请关闭命令跟踪和变量自动导出后再使用此工具。\n' >&2
         return 2
     fi
     if (( $# == 1 )) && [[ $1 == -h || $1 == --help ]]; then
         case $tool in
             ipmitool) if [[ $1 == --help ]]; then bmc tool "$tool" --help; return; fi ;;
-            bmc_v2_auth|redfish|bssh|getcid|setcid|smash|snmp) bmc tool "$tool"; return ;;
+            bmc_v2_auth|redfish|bssh|getcid|setcid|smash|snmp) bmc tool "$tool" --help; return ;;
         esac
     fi
     ip=$(bmc bridge field target.ip) || return
     if [[ -z $ip || ( $tool != ipmitool && $tool != bmc_v2_auth && ! $ip =~ ^[0-9]+(\.[0-9]+){3}$ ) ]]; then
-        builtin printf 'V2 工具需要当前会话中的 IPv4 目标。\n' >&2
+        builtin printf '请先运行 bmc use 选择 BMC 目标。\n' >&2
         return 2
     fi
     case $tool:${1-} in
-        bmc_v2_auth:*) _bmcshell_v2tools_auth "$root" "$@"; return ;;
+        bmc_v2_auth:*) _bmcshell_v2tools_auth "$root" "$tool" "$@"; return ;;
         redfish:--auth|bssh:--auth|getcid:--auth|smash:--auth)
-            shift; _bmcshell_v2tools_auth "$root" "$@"; return ;;
+            shift; _bmcshell_v2tools_auth "$root" "$tool" "$@"; return ;;
         snmp:-c|snmp:--configure|snmp:-r|snmp:--clear)
             _bmcshell_v2tools_snmp_setup "$root" "$ip" "$@"; return ;;
     esac

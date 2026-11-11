@@ -7,14 +7,14 @@ function Assert-PackageIdentity([System.Collections.IDictionary] $Package, [stri
         $typePrefix -cnotin 'book', 'library', 'theme', 'tool', 'bundle' -or
         $Package.shortName -isnot [string] -or $Package.shortName.Length -gt 48 -or
         $Package.shortName -cnotmatch '\A[a-z][a-z0-9]*(?:-[a-z0-9]+)*\z') {
-        throw 'Invalid publisher, type, or shortName.'
+        throw '发布者、包类型或短名无效。'
     }
     $expected = "$($Package.publisher)-$typePrefix-$($Package.shortName)"
     if ($Package.name -cne $expected) {
-        throw "Package name must be '$expected'."
+        throw "包名必须为 '$expected'。"
     }
     $directory = Split-Path -Leaf $Repository
     if ($directory -cne $expected) {
-        throw "Source directory '$directory' must match package name '$expected'."
+        throw "源目录名 '$directory' 必须与包名 '$expected' 一致。"
     }
 }

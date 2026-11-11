@@ -1,12 +1,29 @@
 # BMC Shell 2.0 - plugins/ipmi.sh
 
+_bmc_ipmi_color_enabled() {
+    [[ -t $1 && ${TERM-} != dumb && -z ${NO_COLOR-} ]]
+}
+
+_bmc_ipmi_color_fields() {
+    local line newline=$'\n'
+    local field='^([[:blank:]]*)([[:alnum:]][^:[:cntrl:]]*)(:[[:space:]].*|:)$'
+    while IFS= builtin read -r line || { newline=''; [[ -n $line ]]; }; do
+        if [[ $line =~ $field ]]; then
+            builtin printf '%s\033[36m%s\033[0m%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "$newline"
+        else
+            builtin printf '%s%s' "$line" "$newline"
+        fi
+    done
+}
+
 _bmc_ipmi_wrapper() {
     _bmc_secret_guard && _bmc_require_active || return
     local executable proxy_address arg flag index route_option name
     local host=$_BMC_IP interface=lanplus user='' port=623 family='' auth_type=''
     local explicit_host=0 explicit_interface=0 explicit_user=0 explicit_password=0
     local local_device=0 offline=0 command_seen=0 environment_password=0
-    local binary=0 output rc token octal escaped=''
+    local binary=0 csv=0 prompt_password=0 color_fields=0 command_index=0
+    local output rc token octal escaped='' echo_style='' echo_reset=''
     local +x value
     local -a options=() relay_options=() command_args=() operand=() defaults=() invoke=() display_args=() bytes=()
     executable=$(builtin type -P ipmitool) || {
@@ -37,7 +54,8 @@ _bmc_ipmi_wrapper() {
                 flag=${arg:index:1}
                 case $flag in
                     h|V) offline=1 ;;
-                    a) explicit_password=1 ;;
+                    c) csv=1 ;;
+                    a) explicit_password=1; prompt_password=1 ;;
                     E) explicit_password=1; environment_password=1 ;;
                     4|6) family=$flag ;;
                     [IodHPfUpCLAtTmzSlbBekyORND])
@@ -70,6 +88,16 @@ _bmc_ipmi_wrapper() {
             relay_options+=("$arg" "${operand[@]}")
         fi
     done
+
+    if (( ! binary && ! csv && ! prompt_password && ! offline )) && _bmc_ipmi_color_enabled 1; then
+        if [[ ${command_args[0]-} == -- ]]; then command_index=1; fi
+        # Only pipe read-only reports with label/value output. Interactive
+        # commands and other native output formats keep their original streams.
+        case "${command_args[command_index]-} ${command_args[command_index+1]-}" in
+            'lan print'|'lan6 print'|'mc info'|'chassis status'|'sensor get'|'sdr get'|'sdr info'|'fru print'|'sel info'|'channel info')
+                color_fields=1 ;;
+        esac
+    fi
 
     if (( local_device && ! explicit_interface && ! explicit_host )); then interface=''; fi
     display_args=("${options[@]}" "${command_args[@]}")
@@ -104,8 +132,12 @@ _bmc_ipmi_wrapper() {
     fi
     if (( binary == 0 )); then
         # Show the resolved remote command, including plaintext credentials.
+        if _bmc_ipmi_color_enabled 2; then
+            echo_style=$'\033[90m'
+            echo_reset=$'\033[0m'
+        fi
         {
-            builtin printf '==> '
+            builtin printf '%s==> ' "$echo_style"
             if (( environment_password )); then
                 for name in IPMITOOL_PASSWORD IPMI_PASSWORD; do
                     if [[ $(builtin declare -p "$name" 2>/dev/null) =~ ^declare\ -[a-zA-Z]*x ]]; then
@@ -116,8 +148,12 @@ _bmc_ipmi_wrapper() {
             fi
             builtin printf 'ipmitool'
             if (( ${#display_args[@]} )); then builtin printf ' %q' "${display_args[@]}"; fi
-            builtin printf '\n'
+            builtin printf '%s\n' "$echo_reset"
         } >&2
+        if (( color_fields )); then
+            "${invoke[@]}" | _bmc_ipmi_color_fields || return "${PIPESTATUS[0]}"
+            return "${PIPESTATUS[0]}"
+        fi
         "${invoke[@]}"
         return
     fi

@@ -1,36 +1,63 @@
 {
   "topics": {
     "package": {
-      "summary": "执行当前目标的原生 IPMI 命令，支持二进制响应输出。",
+      "summary": "执行 IPMI 命令，并按需将十六进制响应转换为原始字节。",
       "usage": [
         "bmc use <IP>",
-        "bmc tool ipmitool --help"
+        "bmc tool ipmitool --help",
+        "bmc tool bmc_v2_auth --help"
       ],
       "examples": [
         {
-          "command": "bmc tool ipmitool --help",
-          "description": "查看详细说明和示例。"
+          "command": "ipmitool chassis status",
+          "description": "选中并配置目标后读取机箱状态。"
         }
       ],
       "notes": [
-        "使用 bmc_v2_auth 为当前目标交互配置会话凭据。",
-        "本工具遵循 BMCShell 的 SOCKS5 代理设置。"
+        "需要 PATH 中的 ipmitool。带外连接可以使用当前目标和会话凭据，代理由 bmc proxy 管理。"
       ]
     },
     "tool.ipmitool": {
-      "summary": "运行原生 ipmitool，可使用当前 BMC 会话作为带外连接默认值。",
+      "summary": "调用原生 ipmitool，可使用当前 BMC 会话的带外连接参数。",
       "usage": [
-        "ipmitool [--bin] [-I <接口>] [-H <主机>] [-U <用户>] [-P <密码>] [原生选项] <命令> [命令参数]"
+        "ipmitool [--bin] [原生选项] <命令> [命令参数...]",
+        "ipmitool --help",
+        "ipmitool -h",
+        "ipmitool -V"
       ],
       "options": [
         {
           "name": "--bin",
-          "description": "将标准输出中空白分隔的两位十六进制响应转换为原始字节，可用于 raw。可放在命令前或命令参数末尾。",
+          "description": "把标准输出中空白分隔的两位十六进制响应转为原始字节。可写在命令前或命令参数末尾。",
           "default": "原生文本输出"
         },
         {
+          "name": "-I <接口>",
+          "description": "选择原生 IPMI 接口，例如 lan、lanplus 或 open。",
+          "default": "lanplus"
+        },
+        {
+          "name": "-H <主机>",
+          "description": "为本次带外请求指定目标。",
+          "default": "当前 BMC 会话的目标"
+        },
+        {
+          "name": "-p <端口>",
+          "description": "指定带外连接的 UDP 端口。",
+          "default": "623"
+        },
+        {
+          "name": "-U <用户名>",
+          "description": "指定带外连接用户名。",
+          "default": "优先使用当前目标的会话用户名"
+        },
+        {
+          "name": "-a, -E, -f <文件>, -P <密码>",
+          "description": "分别通过交互输入、环境变量、文件或命令行提供原生 ipmitool 密码。"
+        },
+        {
           "name": "-h",
-          "description": "显示原生 ipmitool 的选项帮助，包括 -b 桥接通道和 -p UDP 端口。"
+          "description": "查看原生 ipmitool 的帮助，其中 -b 表示桥接通道。"
         }
       ],
       "examples": [
@@ -39,46 +66,50 @@
           "description": "使用当前会话读取机箱状态。"
         },
         {
-          "command": "ipmitool -I lanplus -U operator -P '示例密码' -H 192.0.2.20 chassis status",
-          "description": "显式指定带外连接的目标和用户名、密码。"
+          "command": "ipmitool -I lanplus -H 192.0.2.20 -U operator -a chassis status",
+          "description": "指定另一台目标设备，并交互输入密码。"
         },
         {
           "command": "ipmitool raw 0x06 0x01 --bin | hexdump -C",
-          "description": "将 raw 的十六进制响应转为原始字节再显示。"
+          "description": "读取设备 ID，将原始响应字节交给 hexdump 显示。"
         }
       ],
       "notes": [
-        "带外连接默认使用 lanplus 和当前会话的目标。当前目标可通过 bmc_v2_auth 设置缺省用户名和密码。显式指定的其他目标或用户名使用调用者提供的认证选项或 ipmitool 的原生认证流程。",
-        "-P、-E、-f 和 -a 均按原生方式取密码。使用 -I open 等本地接口时，由 ipmitool 处理连接。",
-        "会话默认凭据通过 -U 和 -P 传递。普通调用在执行前向标准错误回显以 ==> ipmitool 开头的完整命令，密码明文显示。参数按 Bash 语法转义，代理模式显示远端目标，--bin 模式关闭命令回显。",
-        "-f 和 -a 按原生命令回显密码文件路径或交互参数。",
-        "二进制模式先校验完整响应。支持 00 字节，保留原始字节数，原生命令失败时返回其退出码。",
-        "可用 command ipmitool -V 检查系统程序，用 bmc doctor -d 查看缺失依赖的修复建议。"
+        "先运行 bmc use 选择目标。当前目标的默认用户名和密码可用 bmc_v2_auth 配置。其他目标或用户名按原生 ipmitool 选项认证。",
+        "普通调用在标准错误上以 ==> 回显完整命令，命令里的密码会明文显示。--bin 会关闭命令回显。",
+        "二进制模式在输出前校验完整响应，保留 00 字节，原生命令失败时沿用退出码。",
+        "终端中的常用报告会突出显示字段名，可用 NO_COLOR=1 关闭配色。可用 command ipmitool -V 检查系统依赖。"
       ]
     },
     "tool.bmc_v2_auth": {
-      "summary": "为当前目标手动设置用户名和密码。",
+      "summary": "为当前 BMC 会话手动配置登录凭据。",
       "usage": [
         "bmc_v2_auth [--tls-insecure]",
-        "bmc_v2_auth [--tls-insecure|--clear]"
+        "bmc_v2_auth --clear"
       ],
       "options": [
         {
           "name": "--tls-insecure",
-          "description": "允许当前目标的 Redfish 请求跳过 HTTPS 证书校验。",
+          "description": "与 bmc_v2_auth 一起使用，允许同一会话的 Redfish 请求跳过 HTTPS 证书校验。",
           "default": "校验证书"
+        },
+        {
+          "name": "--clear",
+          "description": "清除当前会话的登录凭据及 TLS 设置。"
         }
       ],
       "examples": [
         {
           "command": "bmc_v2_auth",
-          "description": "从终端输入用户名和密码。"
+          "description": "交互输入用户名和密码。"
+        },
+        {
+          "command": "bmc_v2_auth --clear",
+          "description": "清除当前会话手动配置的登录凭据。"
         }
       ],
       "notes": [
-        "凭据保存在当前 Bash 会话内存，由工具发起请求时使用。配置动作本身不进行设备认证。",
-        "退出、成功切换目标会清除当前凭据。",
-        "认证配置保存在当前会话内存。--clear 清除已配置凭据。"
+        "凭据保存在当前 Bash 会话内存，成功切换目标或退出后清除。"
       ]
     }
   }

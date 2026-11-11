@@ -1,11 +1,11 @@
 # BMC Shell 2.0 - core/common.sh
 
-_bmc_error() { printf 'BMC Shell: %s\n' "$*" >&2; }
+_bmc_error() { printf 'BMCShell：%s\n' "$*" >&2; }
 
 _bmc_secret_guard() {
     case $- in
-        *x*) _bmc_error 'Disable command tracing (set +x) before using credentials.'; return 2 ;;
-        *a*) _bmc_error 'Disable automatic export (set +a) before using credentials.'; return 2 ;;
+        *x*) _bmc_error '请先运行 set +x 关闭命令跟踪，再使用凭据。'; return 2 ;;
+        *a*) _bmc_error '请先运行 set +a 关闭变量自动导出，再使用凭据。'; return 2 ;;
     esac
     # Assignments made by a previous set -a session can leave empty variables
     # exported even after set +a. Remove those attributes before storing secrets.
@@ -32,9 +32,9 @@ _bmc_credentials_valid() {
 
 _bmc_settings_valid() {
     [[ ${BMC_CONNECT_TIMEOUT:-5} =~ ^[1-9][0-9]{0,2}$ && ${BMC_HTTP_TIMEOUT:-15} =~ ^[1-9][0-9]{0,2}$ ]] || {
-        _bmc_error 'Timeouts must be integer seconds from 1 through 999.'; return 2;
+        _bmc_error '连接和请求超时必须为 1 至 999 秒的整数。'; return 2;
     }
     [[ -z ${BMC_CA_BUNDLE-} || -r $BMC_CA_BUNDLE ]] || {
-        _bmc_error 'BMC_CA_BUNDLE is not readable.'; return 2;
+        _bmc_error '无法读取 BMC_CA_BUNDLE 指定的 CA 证书文件。'; return 2;
     }
 }
