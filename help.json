@@ -14,7 +14,8 @@
         }
       ],
       "notes": [
-        "需要 PATH 中的 ipmitool。带外连接可以使用当前目标和会话凭据，代理由 bmc proxy 管理。"
+        "需要 PATH 中的 ipmitool。带外连接可以使用当前目标和会话凭据，代理由 bmc proxy 管理。",
+        "可在设置中心调整终端颜色。命令行用法为 bmc setting --set plugin.bmcshell-tool-ipmi.color off --reload。"
       ]
     },
     "tool.ipmitool": {

@@ -1,7 +1,7 @@
 # BMC Shell 2.0 - plugins/ipmi.sh
 
 _bmc_ipmi_color_enabled() {
-    [[ -t $1 && ${TERM-} != dumb && -z ${NO_COLOR-} ]]
+    [[ ${BMCSHELL_IPMI_COLOR:-auto} == auto && -t $1 && ${TERM-} != dumb && -z ${NO_COLOR-} ]]
 }
 
 _bmc_ipmi_color_fields() {
